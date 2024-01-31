@@ -1,3 +1,18 @@
+// SPDX-FileCopyrightText: 2020 Efabless Corporation
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// SPDX-License-Identifier: Apache-2.0
+
 `default_nettype none
 module user_proj_example #(
     parameter BITS = 16
@@ -29,6 +44,8 @@ module user_proj_example #(
     output [BITS-1:0] io_out,
     output [BITS-1:0] io_oeb,
 
+    // IRQ
+    output [2:0] irq
 );
     wire clk;
     wire rst;
@@ -67,36 +84,52 @@ module user_proj_example #(
     ) counter(
         .clk(clk),
         .reset(rst),
-        .preset(preset),
-        .load_value(load_value)
+        .ready(wbs_ack_o),
+        .valid(valid),
+        .rdata(rdata),
+        .wdata(wbs_dat_i[BITS-1:0]),
+        .wstrb(wstrb),
+        .la_write(la_write),
+        .la_input(la_data_in[63:64-BITS]),
         .count(count)
     );
 
 endmodule
 
-module counter(
-        input clk, reset,
-        input [7:0]load_value,
-        input preset,
-        output [7:0] count
+module counter #(
+    parameter BITS = 16
+)(
+    input clk,
+    input reset,
+    input valid,
+    input [3:0] wstrb,
+    input [BITS-1:0] wdata,
+    input [BITS-1:0] la_write,
+    input [BITS-1:0] la_input,
+    output reg ready,
+    output reg [BITS-1:0] rdata,
+    output reg [BITS-1:0] count
 );
-    reg [7:0] counter_up;
-    reg [30:0] clk_counter;
-    /*always@(posedge clk)
-    begin
-        if(clk_counter == 100000000) 
-            clk_counter <=0;
-         else
-            clk_counter <= clk_counter +1'b1;
-     end*/
-    always@(posedge clk)
-        begin
-            if(reset)
-                counter_up <= 8'b0;            //when reset is set high counter value is set to zero
-            else if(preset)
-                counter_up <= load_value;        //preset value loads the set value and the counter resumes counting from that number
-            else 
-                counter_up <= counter_up +1;    //incremental of value every positive edge of cycle
+
+    always @(posedge clk) begin
+        if (reset) begin
+            count <= 1'b0;
+            ready <= 1'b0;
+        end else begin
+            ready <= 1'b0;
+            if (~|la_write) begin
+                count <= count + 1'b1;
+            end
+            if (valid && !ready) begin
+                ready <= 1'b1;
+                rdata <= count;
+                if (wstrb[0]) count[7:0]   <= wdata[7:0];
+                if (wstrb[1]) count[15:8]  <= wdata[15:8];
+            end else if (|la_write) begin
+                count <= la_write & la_input;
+            end
         end
-        assign count = counter_up;        //output count receives reg value of counter_up
+    end
+
 endmodule
+`default_nettype wire
