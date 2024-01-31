@@ -102,7 +102,5 @@ user_proj_example mprj (
     // IRQ
     .irq(user_irq)
 );
-
-endmodule	// user_project_wrapper
-
+endmodule	
 `default_nettype wire
